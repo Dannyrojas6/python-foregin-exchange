@@ -17,59 +17,72 @@ def find_local_data(source):
         if not Path(local_data_file).exists():
             return None
         else:
-            with open(local_data_file, "r", encoding="utf-8") as f:
-                data = json.load(f)
-                if (
-                    date.today() - datetime.strptime(data["date"], "%Y-%m-%d").date()
-                ).days < 1:
-                    return None
-                return data
+            data = read_file(local_data_file)
+            if data is None:
+                return
+            if (
+                date.today() - datetime.strptime(data["date"], "%Y-%m-%d").date()
+            ).days >= 2:
+                return None
+            return data
     except Exception as e:
-        print(f"未通过检查！错误原因：{e}")
+        print(f"查询本地缓存出错！错误原因：{e}")
 
 
-def get_data(source):
+def get_online_data(source):
+    url = f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/{source}.json"
+    new_local_file = f"data/{source}-currency.json"
+
     try:
-        new_local_file = "data/" + f"{source}-currency.json"
-        with open(new_local_file, "w", encoding="utf-8") as f:
-            url = (
-                "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/"
-                + f"{source}.json"
-            )
-            r = requests.get(url)
-            if r.status_code == 200:
-                print("本地数据已过期，重新拉取中……")
-                print("拉取成功！")
-                data = r.json()
-                json.dump(data, f, indent=4, ensure_ascii=False)
-        with open(new_local_file, "r", encoding="utf-8") as f:
-            return json.load(f)
-
+        r = requests.get(url, timeout=(3, 10))
+        print("拉取成功！")
+        data = r.json()
+        write_file(new_local_file, data)
+        return data
+    except requests.Timeout:
+        console.print("请求超时！请检查网络。")
+        return None
+    except requests.ConnectionError:
+        print("连接错误！请检查网络连接或代理设置。")
+        return None
     except Exception as e:
-        print(f"未通过检查！错误原因：{e}")
+        print(f"出现异常捕获！原因：{type(e).__name__} - {e}")
 
 
 def load_data(source):
-    currencies = Path("data/currencies.json")
-    with open(currencies, "r", encoding="utf-8") as f:
-        data = json.load(f)
-    if source not in data.keys():
-        console.print("货币不存在！请重试。")
-        return None
     if find_local_data(source) is not None:
         return find_local_data(source)
     else:
-        return get_data(source)
+        return get_online_data(source)
+
+
+def read_file(file):
+    try:
+        with open(file, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception as e:
+        console.print(f"读取文件错误！错误原因：{e}")
+        return
+
+
+def write_file(file, data):
+    try:
+        with open(file, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4, ensure_ascii=False)
+    except Exception as e:
+        console.print(f"写入文件失败！错误原因：{e}")
 
 
 def check_available(check_list):
     currencies = Path("data/currencies.json")
-    with open(currencies, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    data = read_file(currencies)
+    if data is None:
+        return
     for code in check_list:
         if code not in data.keys():
             console.print("货币不存在！请重试。")
             return None
+    console.print("测试用：检查通过")
     return True
 
 
@@ -95,9 +108,9 @@ def convert(num: int, source: str, target: str):
     table.add_row(
         str(num),
         source.upper(),
-        f"{s2t_data * num:.2f}",
+        f"{s2t_data * num}",
         target.upper(),
-        f"{s2t_data:.2f}",
+        f"{s2t_data}",
     )
     console.print(table)
 
@@ -154,11 +167,15 @@ def list(type: str = typer.Argument("common")):
 
 @app.command()
 def test():
-    print(
-        requests.get(
-            "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/btc.json"
-        ).json()
-    )
+    # print(
+    #     requests.get(
+    #         "https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/btc.json"
+    #     ).json()
+    # )
+    source = "cny"
+    source = [source]
+    # source = [].append(source)
+    print(source)
 
 
 if __name__ == "__main__":
