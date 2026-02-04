@@ -100,9 +100,13 @@ def write_file(file, data):
 def check_available(check_list):
     # 每次检查都需要进行文件IO，可以尝试缓存在内存里
     currencies = Path("data/currencies.json")
+    if not currencies.exists():
+        console.print("currencies.json文件不存在！请手动下载并将其添加到data目录下。")
+        return None
     data = read_file(currencies)
     if data is None:
-        return
+        console.print("文件存坏！请检查data/currencies.json文件是否正常！")
+        return None
     for code in check_list:
         if code not in data.keys():
             console.print("货币不存在！请重试。")
@@ -123,7 +127,7 @@ def list_assist(file):
 
 
 @app.command()
-def init():
+def refresh():
     try:
         bases = ["usd", "cny", "jpy", "btc"]
         for base in bases:
@@ -178,7 +182,7 @@ def convert(num: int, source: str, target: str):
 
 
 @app.command()
-def multi_convert(num: int, source: str, targets: List[str]):
+def multi_convert(num: int, source: str, targets: List[str] = typer.Argument(["cny"])):
     source = source.lower()
     targets = [target.lower() for target in targets]
     check_list = [source] + targets
