@@ -1,17 +1,16 @@
 import json
+import requests
+import typer
 from datetime import date, datetime
 from pathlib import Path
 from typing import List
-
-import requests
-import typer
 from rich.console import Console
 from rich.table import Table
 
 app = typer.Typer()
-Path("data").mkdir(exist_ok=True)
 console = Console()
-
+DATA_DIR = Path.cwd() / "data"
+DATA_DIR.mkdir(exist_ok=True)
 STATUS_VALID = "VALID"
 STATUS_NO_FILE = "NO_FILE"
 STATUS_BROKEN = "BROKEN"
@@ -19,7 +18,7 @@ STATUS_EXPIRED = "EXPIRED"
 
 
 def find_local_data(source):
-    file_path = "data/" + f"{source}-currency.json"
+    file_path = DATA_DIR / f"{source}-currency.json"
     if not Path(file_path).exists():
         return {"status": STATUS_NO_FILE, "data": None}
     data = read_file(file_path)
@@ -33,7 +32,7 @@ def find_local_data(source):
 
 def get_online_data(source):
     url = f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/{source}.json"
-    new_local_file = f"data/{source}-currency.json"
+    new_local_file = DATA_DIR / f"{source}-currency.json"
 
     try:
         r = requests.get(url, timeout=(3, 10))
@@ -99,7 +98,7 @@ def write_file(file, data):
 
 def check_available(check_list):
     # 每次检查都需要进行文件IO，可以尝试缓存在内存里
-    currencies = Path("data/currencies.json")
+    currencies = DATA_DIR / "currencies.json"
     if not currencies.exists():
         console.print("currencies.json文件不存在！请手动下载并将其添加到data目录下。")
         return None
@@ -132,7 +131,7 @@ def refresh():
         bases = ["usd", "cny", "jpy", "btc"]
         for base in bases:
             url = f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/{base}.json"
-            new_local_file = f"data/{base}-currency.json"
+            new_local_file = DATA_DIR / f"{base}-currency.json"
             r = requests.get(url, timeout=(3, 10))
             if r.status_code != 200:
                 console.print(f"{base}汇率更新失败！")
@@ -215,9 +214,9 @@ def multi_convert(num: int, source: str, targets: List[str] = typer.Argument(["c
 @app.command()
 def list(type: str = typer.Argument("common")):
     files = {
-        "all": Path("data/currencies.json"),
-        "common": Path("data/common-currencies.json"),
-        "crypto": Path("data/crypto-currencies.json"),
+        "all": DATA_DIR / "currencies.json",
+        "common": DATA_DIR / "common-currencies.json",
+        "crypto": DATA_DIR / "crypto-currencies.json",
     }
     try:
         list_assist(files[type.lower()])
