@@ -11,6 +11,8 @@ from rich import box
 
 app = typer.Typer()
 console = Console()
+global init_currencies_data
+init_currencies_data = {}
 DATA_DIR = Path.cwd() / "data"
 DATA_DIR.mkdir(exist_ok=True)
 STATUS_VALID = "VALID"
@@ -19,13 +21,23 @@ STATUS_BROKEN = "BROKEN"
 STATUS_EXPIRED = "EXPIRED"
 
 # TODO:
-# TODO:
-# TODO:
-# TODO:
-# TODO:
 # DONE:添加汇率变化趋势显示(对比历史数据)
 # DONE:添加历史汇率查询(指定日期查询)
 # DONE:添加支持反向计算(如多少USD可以换100CNY)
+# DONE:每次检查都需要进行文件IO，可以尝试缓存在内存里
+
+
+def init_check_available():
+    global init_currencies_data
+    currencies = DATA_DIR / "currencies.json"
+    if not currencies.exists():
+        console.print("currencies.json文件不存在！请手动下载并将其添加到data目录下。")
+        return None
+    data = read_file(currencies)
+    if data is None:
+        console.print("文件存坏！请检查data/currencies.json文件是否正常！")
+        return None
+    init_currencies_data = data
 
 
 def find_local_data(source):
@@ -112,20 +124,14 @@ def write_file(file, data):
 
 
 def check_available(check_list):
-    # 每次检查都需要进行文件IO，可以尝试缓存在内存里
-    currencies = DATA_DIR / "currencies.json"
-    if not currencies.exists():
-        console.print("currencies.json文件不存在！请手动下载并将其添加到data目录下。")
+    try:
+        for code in check_list:
+            if code not in init_currencies_data.keys():
+                console.print("货币不存在！请重试。")
+                return None
+        return True
+    except AttributeError:
         return None
-    data = read_file(currencies)
-    if data is None:
-        console.print("文件存坏！请检查data/currencies.json文件是否正常！")
-        return None
-    for code in check_list:
-        if code not in data.keys():
-            console.print("货币不存在！请重试。")
-            return None
-    return True
 
 
 def list_assist(file):
@@ -365,8 +371,8 @@ def reconvert(target: str, num: int, source: str):
     table.add_row(
         target.upper(),
         str(num),
-        f"{s2t_data * num:.4f}",
         source.upper(),
+        f"{s2t_data * num:.4f}",
         f"{s2t_data:.4f}",
     )
     console.print(f"汇率时间：{data['date']}")
@@ -388,4 +394,5 @@ def list(type: str = typer.Argument("common")):
 
 
 if __name__ == "__main__":
+    init_check_available()
     app()
