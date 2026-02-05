@@ -1,11 +1,13 @@
 import json
 import requests
 import typer
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import List
 from rich.console import Console
 from rich.table import Table
+from rich.panel import Panel
+from rich import box
 
 app = typer.Typer()
 console = Console()
@@ -15,6 +17,15 @@ STATUS_VALID = "VALID"
 STATUS_NO_FILE = "NO_FILE"
 STATUS_BROKEN = "BROKEN"
 STATUS_EXPIRED = "EXPIRED"
+
+# TODO:
+# TODO:
+# TODO:
+# TODO:
+# TODO:
+# DONE:添加汇率变化趋势显示(对比历史数据)
+# DONE:添加历史汇率查询(指定日期查询)
+# DONE:添加支持反向计算(如多少USD可以换100CNY)
 
 
 def find_local_data(source):
@@ -30,15 +41,19 @@ def find_local_data(source):
         return {"status": STATUS_VALID, "data": data}
 
 
-def get_online_data(source):
+def get_online_data(source, url_date=None):
     url = f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/{source}.json"
     new_local_file = DATA_DIR / f"{source}-currency.json"
 
     try:
-        r = requests.get(url, timeout=(3, 10))
+        if url_date is None:
+            r = requests.get(url, timeout=(3, 10))
+        else:
+            r = requests.get(url_date, timeout=(3, 10))
         data = r.json()
         write_file(new_local_file, data)
         return data
+
     except requests.Timeout:
         console.print("请求超时！请检查网络环境。")
         return None
@@ -207,6 +222,153 @@ def multi_convert(num: int, source: str, targets: List[str] = typer.Argument(["c
             target.upper(),
             f"{s2t_data:.4f}",
         )
+    console.print(f"汇率时间：{data['date']}")
+    console.print(table)
+
+
+@app.command()
+def history(date: str, num: int, source: str, target: str):
+    url_date = f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@{date}/v1/currencies/{source}.json"
+
+    source = source.lower()
+    target = target.lower()
+    check_list = [source, target]
+    if check_available(check_list) is None:
+        return
+
+    table = Table()
+    table.add_column("输入数量", justify="center")
+    table.add_column("原始币种", justify="center")
+    table.add_column("转换数量", justify="right")
+    table.add_column("目标币种", justify="center")
+    table.add_column("汇率", justify="right")
+    data = get_online_data(source, url_date)
+
+    if data is None:
+        return
+    s2t_data = data[source][target]
+    table.add_row(
+        str(num),
+        source.upper(),
+        f"{s2t_data * num:.4f}",
+        target.upper(),
+        f"{s2t_data:.4f}",
+    )
+    console.print(f"历史汇率时间：{data['date']}")
+    console.print(table)
+
+
+@app.command()
+def trend(period: str, days: int, source: str, target: str):
+    """
+    这个功能感觉意义不大，至少不是近期几个版本需要实现的。
+    功能：
+    显示7/30天内汇率变化，最高汇率与最低汇率，并计算涨跌幅，
+    同时显示当前最新汇率。
+    输入：
+    period:int
+    source:str
+    target:str
+    输出：
+    当前汇率 6.9 最高 6.99 最低 6.85
+    涨跌变化 +0.14（+2.12%）首值 6.85 样本 30天
+    """
+    # 昨天：(date.today()-timedelta(days=1)).strftime('%Y-%m-%d')
+    # 从period开始往前倒推：(datetime.strftime(period,'%Y-%m-%d')-timedelta(days=1)).strftime('%Y-%m-%d')
+    date_str_list = [
+        ((datetime.strptime(period, "%Y-%m-%d")).date() - timedelta(days=day)).strftime(
+            "%Y-%m-%d"
+        )
+        for day in range(days)
+    ]
+    data_list = []
+    for period_date in date_str_list:
+        url_date = f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@{period_date}/v1/currencies/{source}.json"
+        data = get_online_data(source, url_date)
+        if data is None:
+            return
+        console.print(f"{period_date}号数据抓取成功！")
+        data_list.append(data)
+
+    max_value = max([data[source][target] for data in data_list])
+    min_value = min([data[source][target] for data in data_list])
+    fluctuation = (max_value - min_value) / min_value
+    first_value = data_list[-1][source][target]
+    s2t_data = data_list[0][source][target]
+    symbol = "+" if first_value < s2t_data else "-"
+    trend_color = "green" if first_value < s2t_data else "red"
+
+    source = source.lower()
+    target = target.lower()
+    check_list = [source, target]
+    if check_available(check_list) is None:
+        return
+    table = Table().grid(padding=(0, 2))
+    table.add_column(justify="left")
+    table.add_column(justify="left")
+    table.add_column()
+    table.add_column()
+    table.add_column()
+    table.add_column()
+
+    table.add_row(
+        "当前汇率",
+        f"[{trend_color}]{s2t_data:.4f}[/{trend_color}]",
+        "最高",
+        f"[bright_green]{max_value:.4f}[/bright_green]",
+        "最低",
+        f"[red]{min_value:.4f}[/red]",
+    )
+    table.add_row(
+        "涨跌变化",
+        f"[{trend_color}]{symbol}{fluctuation:.2%}[/{trend_color}]",
+        "首值",
+        f"[cyan]{first_value:.4f}[/cyan]",
+        "样本",
+        f"[yellow]{days}[/yellow] 天",
+    )
+    console.print(
+        Panel(
+            table,
+            title=f"[bold] {source.upper()} -> {target.upper()} [/bold]",
+            border_style="green",
+            box=box.ROUNDED,
+            padding=(0, 2),
+        )
+    )
+
+
+@app.command()
+def reconvert(target: str, num: int, source: str):
+    """
+    反向计算汇率：如多少USD可以换100CNY
+    预期输入：reconvert usd 100 cny
+    期望输出：100 cny s2t_data*100 usd
+    """
+    source = source.lower()
+    target = target.lower()
+    check_list = [source, target]
+    if check_available(check_list) is None:
+        return
+
+    table = Table()
+    table.add_column("目标币种", justify="center")
+    table.add_column("输入数量", justify="center")
+    table.add_column("原始币种", justify="center")
+    table.add_column("转换数量", justify="right")
+    table.add_column("汇率", justify="right")
+    data = load_data(source)
+
+    if data is None:
+        return
+    s2t_data = data[source][target]
+    table.add_row(
+        target.upper(),
+        str(num),
+        f"{s2t_data * num:.4f}",
+        source.upper(),
+        f"{s2t_data:.4f}",
+    )
     console.print(f"汇率时间：{data['date']}")
     console.print(table)
 

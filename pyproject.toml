@@ -6,7 +6,11 @@ description = "a command-line cli currency converter tool"
 readme = "README.md"
 requires-python = ">=3.12"
 # license = { text = "MIT"}
-dependencies = ["requests>=2.32.5", "rich>=14.3.2", "typer>=0.21.1"]
+dependencies = [
+    "requests>=2.32.5",
+    "rich>=14.3.2",
+    "typer>=0.21.1",
+]
 
 [project.scripts]
 pyfx = "pyfx.main:app"
