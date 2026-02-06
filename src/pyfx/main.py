@@ -19,12 +19,32 @@ STATUS_VALID = "VALID"
 STATUS_NO_FILE = "NO_FILE"
 STATUS_BROKEN = "BROKEN"
 STATUS_EXPIRED = "EXPIRED"
+TIME_OUT = (3, 10)
+
 
 # TODO:
+# TODO:添加汇率计算器模式，无须每次计算都输入命令
+# TODO:添加支持汇率批量导出CSV
 # DONE:添加汇率变化趋势显示(对比历史数据)
 # DONE:添加历史汇率查询(指定日期查询)
 # DONE:添加支持反向计算(如多少USD可以换100CNY)
 # DONE:每次检查都需要进行文件IO，可以尝试缓存在内存里
+# DONE:统一requests请求的错误处理
+# DONE:修正trend方法中的fluctuation计算问题
+
+
+def safe_requests(url):
+    try:
+        return requests.get(url, timeout=TIME_OUT).json()
+    except requests.Timeout:
+        console.print("请求超时！请检查网络环境。")
+        return None
+    except requests.ConnectionError:
+        console.print("连接错误！请检查网络连接或代理设置。")
+        return None
+    except Exception as e:
+        console.print(f"出现异常捕获！原因：{type(e).__name__} - {e}")
+        return None
 
 
 def init_check_available():
@@ -56,32 +76,18 @@ def find_local_data(source):
 def get_online_data(source, url_date=None):
     url = f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/{source}.json"
     new_local_file = DATA_DIR / f"{source}-currency.json"
-
-    try:
-        if url_date is None:
-            r = requests.get(url, timeout=(3, 10))
-        else:
-            r = requests.get(url_date, timeout=(3, 10))
-        data = r.json()
-        write_file(new_local_file, data)
-        return data
-
-    except requests.Timeout:
-        console.print("请求超时！请检查网络环境。")
-        return None
-    except requests.ConnectionError:
-        console.print("连接错误！请检查网络连接或代理设置。")
-        return None
-    except Exception as e:
-        console.print(f"出现异常捕获！原因：{type(e).__name__} - {e}")
-        return None
+    if url_date is None:
+        data = safe_requests(url)
+    else:
+        data = safe_requests(url_date)
+    write_file(new_local_file, data)
+    return data
 
 
 def load_data(source):
     status_list = [STATUS_NO_FILE, STATUS_BROKEN, STATUS_EXPIRED]
     local_data = find_local_data(source)
     if local_data["status"] not in status_list:
-        console.print("获取本地缓存成功！")
         return local_data["data"]
     elif local_data["status"] in [STATUS_NO_FILE, STATUS_BROKEN]:
         console.print("本地缓存出错！")
@@ -148,27 +154,16 @@ def list_assist(file):
 
 @app.command()
 def refresh():
-    try:
-        bases = ["usd", "cny", "jpy", "btc"]
-        for base in bases:
-            url = f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/{base}.json"
-            new_local_file = DATA_DIR / f"{base}-currency.json"
-            r = requests.get(url, timeout=(3, 10))
-            if r.status_code != 200:
-                console.print(f"{base}汇率更新失败！")
-                continue
-            data = r.json()
-            write_file(new_local_file, data)
-            console.print(f"{base}汇率更新完成！")
-    except requests.Timeout:
-        console.print("请求超时！请检查网络。")
-        return
-    except requests.ConnectionError:
-        console.print("连接错误！请检查网络连接或代理设置。")
-        return
-    except Exception as e:
-        console.print(f"出现异常捕获！原因：{type(e).__name__} - {e}")
-        return
+    bases = ["usd", "cny", "jpy", "hkd", "twd", "btc"]
+    for base in bases:
+        url = f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/{base}.json"
+        new_local_file = DATA_DIR / f"{base}-currency.json"
+        data = safe_requests(url)
+        if data is None:
+            console.print(f"{base}汇率更新失败！请检查网络环境。")
+            return None
+        write_file(new_local_file, data)
+        console.print(f"{base}汇率更新完成！")
 
 
 @app.command()
@@ -298,9 +293,9 @@ def trend(period: str, days: int, source: str, target: str):
 
     max_value = max([data[source][target] for data in data_list])
     min_value = min([data[source][target] for data in data_list])
-    fluctuation = (max_value - min_value) / min_value
     first_value = data_list[-1][source][target]
     s2t_data = data_list[0][source][target]
+    fluctuation = abs((s2t_data - first_value) / first_value)
     symbol = "+" if first_value < s2t_data else "-"
     trend_color = "green" if first_value < s2t_data else "red"
 
