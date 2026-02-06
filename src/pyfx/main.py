@@ -35,6 +35,7 @@ TIME_OUT = (3, 10)
 # DONE:修正trend方法中的fluctuation计算问题
 # DONE:添加汇率计算器模式，无须每次计算都输入命令
 # DONE:添加支持trend方法批量导出csv
+# DONE:添加支持multi_convert方法批量导出csv
 
 
 def export_csv():
@@ -219,6 +220,7 @@ def multi_convert(
     num: int,
     source: str,
     targets: List[str] = typer.Argument(["cny"]),
+    export: bool = typer.Argument(False),
 ):
     source = source.lower()
     targets = [target.lower() for target in targets]
@@ -251,6 +253,32 @@ def multi_convert(
         )
     console.print(f"汇率时间：{data['date']}")
     console.print(table)
+    if export:
+        num_list = []
+        source_list = []
+        s2t_data_num_list = []
+        target_list = []
+        s2t_data_list = []
+        date_list = []
+        for i in export_data_list:
+            num_list.append((i[0]))
+            source_list.append(i[1])
+            s2t_data_num_list.append(i[2])
+            target_list.append(i[3])
+            s2t_data_list.append(i[4])
+            date_list.append(i[5])
+        data_dict = {
+            "输入数量": num_list,
+            "源货币": source_list,
+            "转换数量": s2t_data_num_list,
+            "目标货币": target_list,
+            "汇率": s2t_data_list,
+            "日期": date_list,
+        }
+        df = pd.DataFrame(data_dict)
+        df["转换数量"] = df["转换数量"].round(4)
+        df["汇率"] = df["汇率"].round(4)
+        df.to_csv(CSV_DIR / "multi_convert_out.csv", index=False, encoding="utf-8-sig")
 
 
 @app.command()
