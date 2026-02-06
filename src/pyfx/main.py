@@ -1,6 +1,8 @@
+import sys
 import json
 import requests
 import typer
+import pandas as pd
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import List
@@ -15,6 +17,8 @@ global init_currencies_data
 init_currencies_data = {}
 DATA_DIR = Path.cwd() / "data"
 DATA_DIR.mkdir(exist_ok=True)
+CSV_DIR = Path.cwd() / "csv"
+CSV_DIR.mkdir(exist_ok=True)
 STATUS_VALID = "VALID"
 STATUS_NO_FILE = "NO_FILE"
 STATUS_BROKEN = "BROKEN"
@@ -23,14 +27,28 @@ TIME_OUT = (3, 10)
 
 
 # TODO:
-# TODO:添加汇率计算器模式，无须每次计算都输入命令
-# TODO:添加支持汇率批量导出CSV
 # DONE:添加汇率变化趋势显示(对比历史数据)
 # DONE:添加历史汇率查询(指定日期查询)
 # DONE:添加支持反向计算(如多少USD可以换100CNY)
 # DONE:每次检查都需要进行文件IO，可以尝试缓存在内存里
 # DONE:统一requests请求的错误处理
 # DONE:修正trend方法中的fluctuation计算问题
+# DONE:添加汇率计算器模式，无须每次计算都输入命令
+# DONE:添加支持trend方法批量导出csv
+
+
+def export_csv():
+    pass
+    # data_dict = {
+    #     "数量": [num],
+    #     "原始币种": [source],
+    #     "转换数量": [exchange_num],
+    #     "目标货币": [target],
+    #     "汇率": [s2t_data],
+    #     "日期": [date],
+    # }
+    # df = pd.DataFrame(data_dict)
+    # df.to_csv(CSV_DIR / "output.csv", index=False, encoding="utf-8-sig")
 
 
 def safe_requests(url):
@@ -197,7 +215,11 @@ def convert(num: int, source: str, target: str):
 
 
 @app.command()
-def multi_convert(num: int, source: str, targets: List[str] = typer.Argument(["cny"])):
+def multi_convert(
+    num: int,
+    source: str,
+    targets: List[str] = typer.Argument(["cny"]),
+):
     source = source.lower()
     targets = [target.lower() for target in targets]
     check_list = [source] + targets
@@ -214,6 +236,7 @@ def multi_convert(num: int, source: str, targets: List[str] = typer.Argument(["c
 
     if data is None:
         return
+    export_data_list = []
     s2t_data_list = [data[source][target] for target in targets]
     for target, s2t_data in zip(targets, s2t_data_list):
         table.add_row(
@@ -222,6 +245,9 @@ def multi_convert(num: int, source: str, targets: List[str] = typer.Argument(["c
             f"{s2t_data * num:.4f}",
             target.upper(),
             f"{s2t_data:.4f}",
+        )
+        export_data_list.append(
+            [num, source, s2t_data * num, target, s2t_data, data["date"]]
         )
     console.print(f"汇率时间：{data['date']}")
     console.print(table)
@@ -260,7 +286,13 @@ def history(date: str, num: int, source: str, target: str):
 
 
 @app.command()
-def trend(period: str, days: int, source: str, target: str):
+def trend(
+    period: str,
+    days: int,
+    source: str,
+    target: str,
+    export: bool = typer.Argument(False),
+):
     """
     这个功能感觉意义不大，至少不是近期几个版本需要实现的。
     功能：
@@ -337,6 +369,15 @@ def trend(period: str, days: int, source: str, target: str):
             padding=(0, 2),
         )
     )
+    if export:
+        data_dict = {
+            "日期": date_str_list,
+            "汇率": [data[source][target] for data in data_list],
+            "货币对": [f"{source.upper()}/{target.upper()}" for _ in data_list],
+        }
+        df = pd.DataFrame(data_dict)
+        df["汇率"] = df["汇率"].round(4)
+        df.to_csv(CSV_DIR / "trend_output.csv", index=False, encoding="utf-8-sig")
 
 
 @app.command()
@@ -372,6 +413,24 @@ def reconvert(target: str, num: int, source: str):
     )
     console.print(f"汇率时间：{data['date']}")
     console.print(table)
+
+
+@app.command()
+def calculator():
+    try:
+        quit_list = ["q", "quit", "exit"]
+        console.print("示例：100 usd cny")
+        while True:
+            input_str = typer.prompt("请输入")
+            if input_str in quit_list:
+                break
+            input_list = [input_list for input_list in input_str.split()]
+            num = int(input_list[0])
+            source = input_list[1]
+            target = input_list[2]
+            convert(num, source, target)
+    except KeyboardInterrupt:
+        sys.exit(0)
 
 
 @app.command()
