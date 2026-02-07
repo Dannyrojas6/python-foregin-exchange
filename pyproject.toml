@@ -1,11 +1,9 @@
 [project]
-# name = "python-foregin-exchange"
 name = "pyfx"
-version = "1.0.1"
+version = "1.0.2"
 description = "a command-line cli currency converter tool"
 readme = "README.md"
 requires-python = ">=3.12"
-# license = { text = "MIT"}
 dependencies = [
   "pandas>=3.0.0",
   "requests>=2.32.5",
@@ -14,7 +12,7 @@ dependencies = [
 ]
 
 [project.scripts]
-pyfx = "pyfx.main:app"
+pyfx = "pyfx.cli:main"
 
 [build-system]
 requires = ["hatchling"]
