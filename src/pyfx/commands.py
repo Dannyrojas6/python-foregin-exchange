@@ -1,4 +1,5 @@
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timedelta
 from typing import List
 
@@ -12,26 +13,25 @@ from rich.table import Table
 from pyfx.config import BASES, CSV_DIR, DATA_DIR
 from pyfx.core import (
     check_available,
+    fetch_base,
     get_online_data,
     load_data,
     read_file,
-    safe_requests,
-    write_file,
 )
 
 console = Console()
 
 
 def refresh():
-    for base in BASES:
-        url = f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/{base}.json"
-        new_local_file = DATA_DIR / f"{base}-currency.json"
-        data = safe_requests(url)
-        if data is None:
-            console.print(f"{base}汇率更新失败！请检查网络环境。")
-            return None
-        write_file(new_local_file, data)
-        console.print(f"{base}汇率更新完成！")
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(fetch_base, base) for base in BASES]
+
+        for future in as_completed(futures):
+            base, ok = future.result()
+            if not ok:
+                console.print(f"{base}汇率更新失败！请检查网络环境。")
+            else:
+                console.print(f"{base}汇率更新完成！")
 
 
 def convert(num: int, source: str, target: str):
@@ -166,21 +166,6 @@ def trend(
     target: str,
     export: bool = typer.Argument(False),
 ):
-    """
-    这个功能感觉意义不大，至少不是近期几个版本需要实现的。
-    功能：
-    显示7/30天内汇率变化，最高汇率与最低汇率，并计算涨跌幅，
-    同时显示当前最新汇率。
-    输入：
-    period:int
-    source:str
-    target:str
-    输出：
-    当前汇率 6.9 最高 6.99 最低 6.85
-    涨跌变化 +0.14（+2.12%）首值 6.85 样本 30天
-    """
-    # 昨天：(date.today()-timedelta(days=1)).strftime('%Y-%m-%d')
-    # 从period开始往前倒推：(datetime.strftime(period,'%Y-%m-%d')-timedelta(days=1)).strftime('%Y-%m-%d')
     date_str_list = [
         ((datetime.strptime(period, "%Y-%m-%d")).date() - timedelta(days=day)).strftime(
             "%Y-%m-%d"
