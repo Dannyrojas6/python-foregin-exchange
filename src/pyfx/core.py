@@ -35,7 +35,19 @@ def safe_requests(url):
         return None
 
 
-def init_check_available():
+def fetch_base(base):
+    url = f"https://cdn.jsdelivr.net/npm/@fawazahmed0/currency-api@latest/v1/currencies/{base}.json"
+    new_local_file = DATA_DIR / f"{base}-currency.json"
+
+    data = safe_requests(url)
+    if data is None:
+        return base, False
+
+    write_file(new_local_file, data)
+    return base, True
+
+
+def init_cache():
     global init_currencies_data
     currencies = DATA_DIR / "currencies.json"
     if not currencies.exists():
